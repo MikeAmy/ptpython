@@ -120,8 +120,7 @@ class PythonRepl(PythonInput):
         else:
             # Try eval first
             try:
-                code = compile_with_flags(line, 'eval')
-                result = eval(code, self.get_globals(), self.get_locals())
+                result = self.evaluate_expression(compile_with_flags, line)
 
                 locals = self.get_locals()
                 locals['_'] = locals['_%i' % self.current_statement_index] = result
@@ -158,17 +157,28 @@ class PythonRepl(PythonInput):
 
             # If not a valid `eval` expression, run using `exec` instead.
             except SyntaxError:
-                code = compile_with_flags(line, 'exec')
-                six.exec_(code, self.get_globals(), self.get_locals())
+                self.execute_statements(compile_with_flags, line)
 
             output.flush()
 
+    def execute_statements(self, compile_with_flags, line):
+        code = compile_with_flags(line, 'exec')
+        six.exec_(code, self.get_globals(), self.get_locals())
+
+    def evaluate_expression(self, compile_with_flags, line):
+        code = compile_with_flags(line, 'eval')
+        result = eval(code, self.get_globals(), self.get_locals())
+        return result
+
+    def exception_info(self):
+        return sys.exc_info()
+    
     def _handle_exception(self, e):
         output = self.app.output
 
         # Instead of just calling ``traceback.format_exc``, we take the
         # traceback and skip the bottom calls of this framework.
-        t, v, tb = sys.exc_info()
+        t, v, tb = sys.exception_info()
 
         # Required for pdb.post_mortem() to work.
         sys.last_type, sys.last_value, sys.last_traceback = t, v, tb
@@ -280,7 +290,8 @@ def run_config(repl, config_file='~/.ptpython/config.py'):
 
 def embed(globals=None, locals=None, configure=None,
           vi_mode=False, history_filename=None, title=None,
-          startup_paths=None, patch_stdout=False, return_asyncio_coroutine=False):
+          startup_paths=None, patch_stdout=False, return_asyncio_coroutine=False,
+          python_repl=PythonRepl):
     """
     Call this to embed  Python shell at the current point in your program.
     It's similar to `IPython.embed` and `bpython.embed`. ::
@@ -317,8 +328,8 @@ def embed(globals=None, locals=None, configure=None,
         use_asyncio_event_loop()
 
     # Create REPL.
-    repl = PythonRepl(get_globals=get_globals, get_locals=get_locals, vi_mode=vi_mode,
-                      history_filename=history_filename, startup_paths=startup_paths)
+    repl = python_repl(get_globals=get_globals, get_locals=get_locals, vi_mode=vi_mode,
+                       history_filename=history_filename, startup_paths=startup_paths)
 
     if title:
         repl.terminal_title = title
